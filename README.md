@@ -85,7 +85,7 @@ Small, latency-bound models (the recognizer's LSTM and per-token steps) don't ga
 
 ## Bundles available so far
 
-A bundle is a folder, or `hf://<org>/<repo>[/<folder>][@revision]` for one on Hugging Face (only that folder is downloaded, once, into the Hugging Face cache). Netra OCR's bundles are published together in [Netra-Lab/Netra-OCR](https://huggingface.co/Netra-Lab/Netra-OCR), one folder each:
+A bundle is a folder, or `hf://<org>/<repo>[/<folder>][@revision]` for one on Hugging Face (downloaded once into the Hugging Face cache; `load` fetches only the graphs for the device, e.g. not the fp16 copies on a CPU). Netra OCR's bundles are published together in [Netra-Lab/Netra-OCR](https://huggingface.co/Netra-Lab/Netra-OCR), one folder each:
 
 | Bundle | Task | From |
 |---|---|---|

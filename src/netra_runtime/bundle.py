@@ -30,10 +30,12 @@ class Bundle:
     files: dict[str, str] = field(default_factory=dict)
 
     def path(self, relative: str) -> Path:
-        resolved = (self.root / relative).resolve()
-        if self.root.resolve() not in resolved.parents and resolved != self.root.resolve():
+        # Checked on the name, not the resolved file: bundle files may be
+        # symlinks (the Hugging Face cache links each one to a shared blob).
+        parts = Path(relative).parts
+        if not parts or Path(relative).is_absolute() or ".." in parts:
             raise BundleError(f"'{relative}' points outside the bundle")
-        return resolved
+        return self.root / relative
 
     def graph_paths(self, variant: str | None = None) -> dict[str, Path]:
         """Graph files for ``variant`` (None = the default fp32 graphs)."""
@@ -46,10 +48,7 @@ class Bundle:
 
     def pick_variant(self, device: str) -> str | None:
         """The first variant the manifest marks as preferred for ``device``, else None."""
-        for name, variant in self.variants.items():
-            if device in variant.get("devices", []):
-                return name
-        return None
+        return pick_variant(self.variants, device)
 
     def verify(self) -> list[str]:
         """Check every file listed under ``files`` against its sha256; return the mismatches."""
@@ -59,6 +58,13 @@ class Bundle:
             if not path.exists() or _sha256(path) != expected:
                 bad.append(relative)
         return bad
+
+
+def pick_variant(variants: dict, device: str) -> str | None:
+    for name, variant in variants.items():
+        if device in variant.get("devices", []):
+            return name
+    return None
 
 
 def load_bundle(root: str | Path) -> Bundle:

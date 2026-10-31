@@ -228,3 +228,36 @@ def test_resolve_hf_sources(monkeypatch, tmp_path):
     assert netra_runtime.resolve("hf://Netra-Lab/solo-bundle") == tmp_path
     assert calls == [("Netra-Lab/Netra-OCR", "v1", ["recognition/*"]), ("Netra-Lab/solo-bundle", None, None)]
     assert netra_runtime.resolve("local/dir") == Path("local/dir")
+
+
+def test_bundle_files_may_be_symlinks(tmp_path):
+    # The Hugging Face cache stores each file as a symlink to a shared blob.
+    blobs = tmp_path / "blobs"
+    blobs.mkdir()
+    (blobs / "abc").write_bytes(b"graph")
+    bundle_dir = tmp_path / "snapshot" / "lines"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "model.onnx").symlink_to(blobs / "abc")
+    from netra_runtime.bundle import Bundle
+    bundle = Bundle(root=bundle_dir, name="x", version="1", task="t", graphs={"model": "model.onnx"}, components={})
+    assert bundle.path("model.onnx").read_bytes() == b"graph"
+
+
+def test_resolve_downloads_only_the_device_variant(monkeypatch, tmp_path):
+    import huggingface_hub
+    folder = make_bundle(tmp_path / "lines", variants={"fp16": {"graphs": {"encoder": "encoder.fp16.onnx"},
+                                                                  "devices": ["cuda"]}})
+    (folder / "encoder.fp16.onnx").write_bytes(b"half")
+    write_manifest(folder, json.loads((folder / "netra-model.json").read_text()))
+    calls = []
+
+    def fake_snapshot(repo_id, revision=None, allow_patterns=None):
+        calls.append(allow_patterns)
+        return str(tmp_path)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    netra_runtime.resolve("hf://Netra-Lab/Netra-OCR/lines", device="cpu")
+    netra_runtime.resolve("hf://Netra-Lab/Netra-OCR/lines", variant="fp16")
+    assert calls[0] == ["lines/netra-model.json"]
+    assert sorted(calls[1]) == ["lines/encoder.onnx", "lines/netra-model.json", "lines/vocab.json"]
+    assert sorted(calls[3]) == ["lines/encoder.fp16.onnx", "lines/netra-model.json", "lines/vocab.json"]
