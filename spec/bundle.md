@@ -60,7 +60,7 @@ One text-line image in, `Text(text, confidence)` out.
 
 - **Graphs:** `encoder`, `decoder_step`.
 - **Components:** `preprocess`, `decoder`, `tokenizer`, `postprocess` (a list, optional).
-- **`encoder`:** `chunks` float32 `[N, 1, H, W]` → `cross_k`, `cross_v` float32 `[layers, 1, heads, S, head_dim]`.
+- **`encoder`:** `chunks` float32 `[N, 1, H, W]` (the chunks of *one* line) → `cross_k`, `cross_v` float32 `[layers, 1, heads, S, head_dim]`.
 - **`decoder_step`:** see `kv-cache` below.
 
 ### `object-detection`
@@ -90,16 +90,23 @@ Options: `layers`, `heads`, `head_dim`, `max_len`.
 `decoder_step` takes:
 - `tokens` int64 `[B, n]`;
 - `past_k`, `past_v` float32 `[layers, B, heads, P, head_dim]`;
-- `cross_k`, `cross_v` (from the encoder).
+- `cross_k`, `cross_v` (from the encoder, stacked along `B`);
+- `cross_mask` float32 `[B, S]`: 0 for real encoder positions, `-inf` for padding.
 
 It returns:
 - `logits` `[B, n, vocab]`;
 - `present_k`, `present_v` `[layers, B, heads, P + n, head_dim]`.
 
 The position of `tokens[:, i]` is `P + i`, and causal masking is handled inside the graph. The greedy loop works like this:
-1. Start with `P = 0` (empty cache) and the `<sos>` token.
+1. Start with `P = 0` (empty cache) and `<sos>` for every line.
 2. Each step, feed the last token and the previous `present_*` tensors as the new `past_*`.
-3. Stop at `<eos>` or after `max_len` steps.
+3. A line is finished at `<eos>`. The batch stops when every line is finished, or after `max_len` steps.
+
+To decode lines of different encoder lengths together:
+- zero-pad their `cross_k`/`cross_v` to the longest `S`;
+- set `cross_mask` to `-inf` on the padding.
+
+The result is the same as decoding each line alone.
 
 `n > 1` is allowed, which lets blockwise/speculative verification reuse the same graph.
 
