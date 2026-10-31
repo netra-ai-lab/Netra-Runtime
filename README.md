@@ -1,0 +1,75 @@
+# Netra Runtime
+
+The shared inference runtime for Netra Lab projects (Netra-OCR, Netra-Lens,
+...). Research code stays in PyTorch. Each model is exported once into a
+**bundle**, and every app loads bundles through one small API that runs on
+CPU or GPU, with no torch at runtime:
+
+```python
+import netra_runtime
+
+recognizer = netra_runtime.load("khmer-text-recognition/", device="auto")
+result = recognizer("line.png")
+print(result.text, result.confidence)
+```
+
+## Install
+
+Install exactly one ONNX Runtime flavour. The CPU and GPU builds conflict and can't be installed side by side.
+
+```bash
+pip install "netra-runtime[cpu]"        # CPU
+pip install "netra-runtime[gpu]"        # NVIDIA GPU + CPU (CUDA 13, cuDNN 9)
+pip install "netra-runtime[openvino]"   # Intel CPU / iGPU
+```
+
+On a GPU machine, the CUDA libraries can come from the `nvidia-*` pip wheels (the ones torch installs). ONNX Runtime also needs `nvidia-curand`, which torch doesn't install.
+
+If a GPU provider can't load, the runtime logs a warning and runs on CPU. It never silently claims to be on the GPU.
+
+## Devices
+
+| `device=` | Engine |
+|---|---|
+| `auto` (default, or `$NETRA_DEVICE`) | `cuda` if usable, else `cpu` |
+| `cpu` | ONNX Runtime CPU |
+| `cuda`, `cuda:1` | CUDA |
+| `tensorrt` | TensorRT, falling back to CUDA, then CPU, per op. The engine is cached in `<bundle>/.trt_cache/` after the first (slow) build. |
+| `openvino` | Intel OpenVINO |
+
+The same bundle runs in the browser with `onnxruntime-web`. Graphs only use basic opset-18 ops, so the format stays portable. See [spec/bundle.md](spec/bundle.md).
+
+## How it fits together
+
+```
+research repo (torch)  --export script-->  bundle/  --netra_runtime.load()-->  Task
+                                           netra-model.json
+                                           *.onnx, vocab.json
+```
+
+- **Bundle:** graphs plus a JSON manifest naming the *components* that surround them: preprocessing, the decoding loop, the tokenizer, post-processing. Format: [spec/bundle.md](spec/bundle.md).
+- **Task:** what an app calls, e.g. `TextRecognizer`. Each task has a fixed output type, so apps don't depend on model internals.
+- **Components:** small classes registered by name (`@register("decoder", "kv-cache")`).
+- **Backend:** `Session` maps a device to ONNX Runtime execution providers. Tensors like a decoder's KV cache stay on the GPU between steps.
+
+## Adding a model
+
+1. Write an exporter in the model's research repo. It builds the graphs and calls `netra_runtime.bundle.write_manifest()`. Example: Netra-OCR's `netra_ocr/recognition/scripts/export_runtime_bundle.py`.
+2. Check parity: the runtime's output vs the PyTorch model on a test set, per device.
+3. If the model only needs existing components, you're done. If it needs something new, add one component class and register it. A new kind of output (e.g. detection boxes) needs one new task class.
+
+## CLI
+
+```bash
+netra-runtime devices                 # usable devices + registered components
+netra-runtime info BUNDLE             # manifest summary, file hash check
+netra-runtime run BUNDLE IMG... --device cuda
+```
+
+## Development
+
+```bash
+pip install -e ".[cpu,dev]"
+pytest                                       # unit tests
+NETRA_TEST_BUNDLE=path/to/bundle pytest      # + a real-bundle smoke test
+```

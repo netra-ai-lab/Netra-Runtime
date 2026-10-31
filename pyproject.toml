@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netra-runtime"
+version = "0.1.0"
+description = "Netra Lab inference runtime: run exported Netra model bundles on CPU or GPU with ONNX Runtime."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Nhem Darayut", email = "darayutnhem009@gmail.com"},
+]
+keywords = ["inference", "onnx", "onnxruntime", "ocr", "netra"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The core has no inference engine dependency on purpose: the CPU and GPU
+# builds of ONNX Runtime ship under different package names that can't be
+# installed side by side, so the user picks exactly one through an extra.
+dependencies = [
+    "numpy",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+cpu = ["onnxruntime>=1.20"]
+gpu = ["onnxruntime-gpu>=1.20"]
+openvino = ["onnxruntime-openvino>=1.20"]
+# Only needed on the research side, to turn a PyTorch model into a bundle.
+export = ["torch>=2.5", "onnx", "onnxscript"]
+dev = ["pytest"]
+
+[project.scripts]
+netra-runtime = "netra_runtime.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/netra-ai-lab/Netra-Runtime"
+
+[tool.setuptools.packages.find]
+where = ["src"]
