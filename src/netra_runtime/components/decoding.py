@@ -62,3 +62,84 @@ class KVCacheGreedyDecoder:
             last = next_ids[:, None].astype(np.int64)
             past_k, past_v = out["present_k"], out["present_v"]
         return list(zip(ids, probs))
+
+
+def _probability(logits: np.ndarray, token: int) -> float:
+    logits = logits.astype(np.float64)
+    return float(1.0 / np.exp(logits - logits[token]).sum())
+
+
+@register("decoder", "blockwise-kv")
+class BlockwiseKVDecoder(KVCacheGreedyDecoder):
+    """Blockwise parallel decoding (Stern et al. 2018) on top of the KV cache.
+
+    Same graph contract as ``kv-cache`` plus one output:
+        proposal_ids [B, n, block_size - 1] int64 -- head j's guess for the
+        token j + 2 positions after each input position.
+
+    Each round feeds the last accepted token followed by the previous round's
+    proposals. The base model's own next-token prediction (``logits``) at each
+    of those positions verifies them: proposals are accepted up to the first
+    disagreement, then the base model's prediction at that point is appended
+    too, and the proposal heads at that same position supply the next round's
+    guesses. Every emitted token is therefore exactly what greedy decoding
+    would emit; the proposals only decide how many arrive per forward pass.
+    The cache is trimmed back to the accepted positions after each round.
+
+    ``rounds`` / ``tokens`` count forward passes and emitted tokens since the
+    decoder was built (``tokens / rounds`` = mean accepted block size).
+    """
+
+    def __init__(self, block_size: int, **options):
+        super().__init__(**options)
+        self.block_size = block_size
+        self.rounds = 0
+        self.tokens = 0
+
+    def decode(self, step, cross_k, cross_v, cross_mask: np.ndarray, sos_id: int, eos_id: int):
+        if cross_mask.shape[0] == 1:
+            return [self._decode_line(step, cross_k, cross_v, cross_mask, sos_id, eos_id)]
+        # Lines accept different numbers of tokens per round, so their caches
+        # diverge in length: decode a batch one line at a time.
+        results = []
+        for b in range(cross_mask.shape[0]):
+            length = int(np.isfinite(cross_mask[b]).sum())
+            results.append(self._decode_line(
+                step, cross_k[:, b:b + 1, :, :length], cross_v[:, b:b + 1, :, :length],
+                cross_mask[b:b + 1, :length], sos_id, eos_id))
+        return results
+
+    def _decode_line(self, step, cross_k, cross_v, cross_mask, sos_id, eos_id):
+        empty = np.zeros((self.layers, 1, self.heads, 0, self.head_dim), dtype=np.float32)
+        past_k, past_v = empty, empty
+        generated, probs, proposals = [sos_id], [], []
+
+        # The cache always holds every generated token except the last one.
+        while len(generated) - 1 < self.max_len:
+            # Never feed a position past max_len - 1 (the position table's end).
+            proposals = proposals[:self.max_len - len(generated)]
+            out = step.run({"tokens": np.array([[generated[-1], *proposals]], dtype=np.int64),
+                            "past_k": past_k, "past_v": past_v,
+                            "cross_k": cross_k, "cross_v": cross_v, "cross_mask": cross_mask})
+            logits = out["logits"][0]
+            predicted = logits.argmax(axis=-1)
+            accepted = 0
+            while accepted < len(proposals) and predicted[accepted] == proposals[accepted]:
+                accepted += 1
+            new_tokens = [*proposals[:accepted], int(predicted[accepted])]
+            self.rounds += 1
+
+            cache_len = past_k.shape[3] + accepted + 1
+            past_k = out["present_k"][:, :, :, :cache_len]
+            past_v = out["present_v"][:, :, :, :cache_len]
+
+            for i, token in enumerate(new_tokens):
+                probs.append(_probability(logits[i], token))
+                self.tokens += 1
+                if token == eos_id:
+                    return generated, probs
+                generated.append(token)
+                if len(generated) - 1 >= self.max_len:
+                    return generated, probs
+            proposals = [int(t) for t in out["proposal_ids"][0, accepted]]
+        return generated, probs

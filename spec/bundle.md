@@ -134,6 +134,20 @@ Options: `labels`, `conf`.
 
 `output0` is `[1, max_det, 6]`: `x1, y1, x2, y2, score, class`, already free of duplicates (NMS-free heads, e.g. YOLOv10). Keep rows with score > `conf`.
 
+### `decoder: blockwise-kv`
+Options: the same as `kv-cache`, plus `block_size`.
+
+`decoder_step` follows the `kv-cache` contract, plus one more output: `proposal_ids` int64 `[B, n, block_size - 1]`. Head `j` guesses the token `j + 2` positions after each input position.
+
+This is blockwise parallel decoding (Stern et al. 2018), merging each round's verify step with the next round's predict step. Each round:
+1. Feed the last accepted token, followed by the previous round's proposals.
+2. Accept proposals while they equal `argmax(logits)` at the position before them.
+3. Append `argmax(logits)` at the first disagreement too.
+4. Trim the cache to the accepted positions.
+5. Take the next proposals from `proposal_ids` at that same position.
+
+The output is exactly what greedy decoding produces. Lines accept different numbers of tokens per round, so a batch decodes one line at a time.
+
 ### `tokenizer: vocab`
 Options: `vocab` (a JSON file of `{token: id}`), plus `sos`, `eos`, `pad`, `unk` token names.
 

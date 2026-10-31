@@ -85,7 +85,10 @@ Small, latency-bound models (the recognizer's LSTM and per-token steps) don't ga
 |---|---|---|
 | `khmer-text-recognition` | `text-recognition` | Netra-OCR `export_runtime_bundle.py` |
 | `khmer-text-lines` | `object-detection` (`yolo-nms`) | `netra-runtime export-yolo best.pt ...` |
+| `khmer-text-recognition-blockwise` | `text-recognition` (`blockwise-kv`) | the same script, on the blockwise checkpoint |
 | `doclayout-docstructbench` | `object-detection` (`yolo-end2end`) | `netra-runtime export-yolo ... --loader doclayout_yolo:YOLOv10` |
+
+Blockwise decoding gives output identical to greedy (325/325 lines). It isn't faster here, though: with a KV cache each greedy step is already cheap, the per-line encoder dominates, and blockwise can't batch across lines. It averages 2.32 tokens per forward pass. It's worth trying where each decoder call is expensive: bigger decoders, or slow per-call runtimes.
 
 Ultralytics-based detectors carry the AGPL-3.0 license into their bundles (recorded in `metadata.license`).
 

@@ -174,3 +174,46 @@ def test_make_and_remove_variants(tmp_path):
 
     remove_variant(root, "int8")
     assert "int8" not in load_bundle(root).variants and not (root / "model.int8.onnx").exists()
+
+
+class _ScriptedStep:
+    """Fake decoder_step: the 'model' always predicts ``target[pos + 1]`` and its
+    proposal heads guess ``target[pos + 2 + j]``, except at positions in ``wrong``."""
+
+    def __init__(self, target, block_size, wrong=()):
+        self.target, self.block_size, self.wrong, self.vocab = target, block_size, set(wrong), 16
+
+    def run(self, inputs, keep=()):
+        tokens, past = inputs["tokens"], inputs["past_k"]
+        P, n = past.shape[3], tokens.shape[1]
+        logits = np.zeros((1, n, self.vocab), np.float32)
+        proposals = np.zeros((1, n, self.block_size - 1), np.int64)
+        for i in range(n):
+            pos = P + i
+            logits[0, i, self.target[min(pos + 1, len(self.target) - 1)]] = 5.0
+            for j in range(self.block_size - 1):
+                k = min(pos + 2 + j, len(self.target) - 1)
+                proposals[0, i, j] = 9 if pos in self.wrong else self.target[k]
+        present = np.zeros(past.shape[:3] + (P + n, past.shape[4]), np.float32)
+        return {"logits": logits, "present_k": present, "present_v": present, "proposal_ids": proposals}
+
+
+def test_blockwise_decoding_matches_greedy():
+    from netra_runtime.components.decoding import BlockwiseKVDecoder, KVCacheGreedyDecoder
+    target = [1, 4, 5, 6, 7, 8, 10, 11, 12, 2]          # <sos> ... <eos>
+    args = dict(layers=1, heads=1, head_dim=2, max_len=50)
+    mask = np.zeros((1, 3), np.float32)
+    greedy = KVCacheGreedyDecoder(**args).decode(_ScriptedStep(target, 1), None, None, mask, 1, 2)
+    for wrong in [(), (0, 3), (1, 2, 3, 4, 5, 6)]:
+        decoder = BlockwiseKVDecoder(block_size=4, **args)
+        got = decoder.decode(_ScriptedStep(target, 4, wrong), None, None, mask, 1, 2)
+        assert got[0][0] == greedy[0][0] == target[:-1]
+        np.testing.assert_allclose(got[0][1], greedy[0][1])
+    # all guesses right: 9 tokens in ceil(9 / 4) = 3 forward passes
+    decoder = BlockwiseKVDecoder(block_size=4, **args)
+    decoder.decode(_ScriptedStep(target, 4), None, None, mask, 1, 2)
+    assert (decoder.rounds, decoder.tokens) == (3, 9)
+
+    capped = BlockwiseKVDecoder(block_size=4, **{**args, "max_len": 4})
+    ids, _ = capped.decode(_ScriptedStep(target, 4), None, None, mask, 1, 2)[0]
+    assert ids == target[:5]                           # stops at max_len tokens, like greedy
