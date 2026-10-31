@@ -213,3 +213,18 @@ def test_blockwise_decoding_matches_greedy():
     capped = BlockwiseKVDecoder(block_size=4, **{**args, "max_len": 4})
     ids, _ = capped.decode(_ScriptedStep(target, 4), None, None, mask, 1, 2)[0]
     assert ids == target[:5]                           # stops at max_len tokens, like greedy
+
+
+def test_resolve_hf_sources(monkeypatch, tmp_path):
+    import huggingface_hub
+    calls = []
+
+    def fake_snapshot(repo_id, revision=None, allow_patterns=None):
+        calls.append((repo_id, revision, allow_patterns))
+        return str(tmp_path)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot)
+    assert netra_runtime.resolve("hf://Netra-Lab/Netra-OCR/recognition@v1") == tmp_path / "recognition"
+    assert netra_runtime.resolve("hf://Netra-Lab/solo-bundle") == tmp_path
+    assert calls == [("Netra-Lab/Netra-OCR", "v1", ["recognition/*"]), ("Netra-Lab/solo-bundle", None, None)]
+    assert netra_runtime.resolve("local/dir") == Path("local/dir")

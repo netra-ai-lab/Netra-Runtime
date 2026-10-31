@@ -20,7 +20,7 @@ read the same files.
 {
   "format": "netra-bundle",
   "format_version": 1,
-  "name": "khmer-text-recognition",
+  "name": "netra-ocr-recognition",
   "version": "1.0.0",
   "task": "text-recognition",
   "graphs": {"encoder": "encoder.onnx", "decoder_step": "decoder_step.onnx"},

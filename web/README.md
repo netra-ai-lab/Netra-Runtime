@@ -5,10 +5,10 @@ The browser half of Netra Runtime. It loads the **same bundles** as the Python p
 ```js
 import { load } from "@netra-ai-lab/runtime-web";
 
-const recognizer = await load("/models/khmer-text-recognition/");     // device: "auto"
+const recognizer = await load("hf://Netra-Lab/Netra-OCR/recognition"); // or a bundle URL; device: "auto"
 const { text, confidence } = await recognizer.recognize(imgElement); // <img>, canvas, ImageBitmap, Blob, ImageData
 
-const lines = await load("/models/khmer-text-lines/", { device: "wasm" });
+const lines = await load("/models/netra-ocr-lines/", { device: "wasm" });
 const boxes = await lines.detect(imageData);   // [{box: [x1, y1, x2, y2], score, label, classId}]
 ```
 
@@ -30,10 +30,10 @@ Checked with `test/parity.mjs` (WebAssembly in Node) and `test/browser.html` (Ch
 | Check | WebAssembly (Node) | WebGPU (Chrome, RTX 3060) |
 |---|---|---|
 | line-chunker inputs | 325/325 bit-identical | — |
-| `khmer-text-recognition` | 325/325 identical text, ~65 ms/line | 100/100 identical, 86 ms/line |
-| `khmer-text-recognition-blockwise` | 325/325 identical text, ~65 ms/line | 100/100 identical, **64 ms/line** |
-| `khmer-text-lines` | 270/270 boxes identical (IoU 1.0), 117 ms/page | 269/270 (square padding), 21 ms/page |
-| `doclayout-docstructbench` | 113/113 boxes identical (IoU 1.0), 1.36 s/page | 111/113 matched (square padding), 129 ms/page |
+| `netra-ocr-recognition` | 325/325 identical text, ~65 ms/line | 100/100 identical, 86 ms/line |
+| `netra-ocr-recognition-blockwise` | 325/325 identical text, ~65 ms/line | 100/100 identical, **64 ms/line** |
+| `netra-ocr-lines` | 270/270 boxes identical (IoU 1.0), 117 ms/page | 269/270 (square padding), 21 ms/page |
+| `netra-ocr-layout` | 113/113 boxes identical (IoU 1.0), 1.36 s/page | 111/113 matched (square padding), 129 ms/page |
 
 Notes on these results:
 - **Blockwise is the faster decoder on WebGPU**, where every call has a high fixed cost and fewer calls win. On CUDA and CPU, plain greedy decoding is as fast or faster.

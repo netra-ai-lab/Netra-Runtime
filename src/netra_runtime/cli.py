@@ -12,7 +12,7 @@ import json
 import sys
 import time
 
-from . import available_devices, load, load_bundle, registry
+from . import available_devices, load, load_bundle, registry, resolve
 
 
 def _devices(args):
@@ -21,7 +21,7 @@ def _devices(args):
 
 
 def _info(args):
-    bundle = load_bundle(args.bundle)
+    bundle = load_bundle(resolve(args.bundle))
     print(f"{bundle.name} {bundle.version}  task={bundle.task}")
     for role, path in bundle.graph_paths().items():
         print(f"  graph {role}: {path.name} ({path.stat().st_size / 1e6:.1f} MB)")

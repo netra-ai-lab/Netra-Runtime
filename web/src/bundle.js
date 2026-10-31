@@ -51,8 +51,16 @@ export class Bundle {
   }
 }
 
+/** "hf://<org>/<repo>[/<folder>][@revision]" -> the bundle's file URL prefix on huggingface.co. */
+export function resolveSource(source) {
+  if (!source.startsWith("hf://")) return source;
+  const [path, revision = "main"] = source.slice("hf://".length).split("@");
+  const [org, repo, ...folder] = path.split("/").filter(Boolean);
+  return `https://huggingface.co/${org}/${repo}/resolve/${revision}/${folder.length ? folder.join("/") + "/" : ""}`;
+}
+
 export async function loadBundle(source, { readFile } = {}) {
-  const reader = readFile ?? urlReader(source);
+  const reader = readFile ?? urlReader(resolveSource(source));
   const manifest = JSON.parse(new TextDecoder().decode(new Uint8Array(await reader(MANIFEST_NAME))));
   if (manifest.format !== FORMAT) throw new Error(`${MANIFEST_NAME} is not a ${FORMAT} manifest`);
   if (manifest.format_version !== FORMAT_VERSION) {

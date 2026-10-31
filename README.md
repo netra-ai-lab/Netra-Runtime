@@ -8,7 +8,7 @@ CPU or GPU, with no torch at runtime:
 ```python
 import netra_runtime
 
-recognizer = netra_runtime.load("khmer-text-recognition/", device="auto")
+recognizer = netra_runtime.load("hf://Netra-Lab/Netra-OCR/recognition", device="auto")
 result = recognizer("line.png")
 print(result.text, result.confidence)
 ```
@@ -76,21 +76,23 @@ A variant can always be selected with `load(..., variant="fp16")`. It only becom
 
 | Bundle | Variant | Result | Decision |
 |---|---|---|---|
-| `doclayout-docstructbench` | fp16, GPU | 65 → 39 ms/page, 115/115 boxes matched | **default on cuda** |
-| `khmer-text-lines` | fp16, GPU | 8.6 → 6.4 ms/page, 269/269 boxes matched | **default on cuda** |
-| `khmer-text-recognition` | fp16, GPU | identical text, but 13.1 → 16.5 ms/line | not used |
-| `khmer-text-recognition` | int8, CPU | CER 1.17% → 1.26%, no speed gain | not used |
+| `netra-ocr-layout` | fp16, GPU | 65 → 39 ms/page, 115/115 boxes matched | **default on cuda** |
+| `netra-ocr-lines` | fp16, GPU | 8.6 → 6.4 ms/page, 269/269 boxes matched | **default on cuda** |
+| `netra-ocr-recognition` | fp16, GPU | identical text, but 13.1 → 16.5 ms/line | not used |
+| `netra-ocr-recognition` | int8, CPU | CER 1.17% → 1.26%, no speed gain | not used |
 
 Small, latency-bound models (the recognizer's LSTM and per-token steps) don't gain from lower precision. Convolution-heavy detectors on a GPU do.
 
 ## Bundles available so far
 
+A bundle is a folder, or `hf://<org>/<repo>[/<folder>][@revision]` for one on Hugging Face (only that folder is downloaded, once, into the Hugging Face cache). Netra OCR's bundles are published together in [Netra-Lab/Netra-OCR](https://huggingface.co/Netra-Lab/Netra-OCR), one folder each:
+
 | Bundle | Task | From |
 |---|---|---|
-| `khmer-text-recognition` | `text-recognition` | Netra-OCR `export_runtime_bundle.py` |
-| `khmer-text-lines` | `object-detection` (`yolo-nms`) | `netra-runtime export-yolo best.pt ...` |
-| `khmer-text-recognition-blockwise` | `text-recognition` (`blockwise-kv`) | the same script, on the blockwise checkpoint |
-| `doclayout-docstructbench` | `object-detection` (`yolo-end2end`) | `netra-runtime export-yolo ... --loader doclayout_yolo:YOLOv10` |
+| `netra-ocr-recognition` (`recognition/`) | `text-recognition` | Netra-OCR `export_runtime_bundle.py` |
+| `netra-ocr-lines` (`lines/`) | `object-detection` (`yolo-nms`) | `netra-runtime export-yolo best.pt ...` |
+| `netra-ocr-recognition-blockwise` (`recognition-blockwise/`) | `text-recognition` (`blockwise-kv`) | the same script, on the blockwise checkpoint |
+| `netra-ocr-layout` (`layout/`) | `object-detection` (`yolo-end2end`) | `netra-runtime export-yolo ... --loader doclayout_yolo:YOLOv10` |
 
 Blockwise decoding gives output identical to greedy (325/325 lines). It isn't faster here, though: with a KV cache each greedy step is already cheap, the per-line encoder dominates, and blockwise can't batch across lines. It averages 2.32 tokens per forward pass. It's worth trying where each decoder call is expensive: bigger decoders, or slow per-call runtimes.
 
