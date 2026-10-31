@@ -63,6 +63,14 @@ One text-line image in, `Text(text, confidence)` out.
 - **`encoder`:** `chunks` float32 `[N, 1, H, W]` → `cross_k`, `cross_v` float32 `[layers, 1, heads, S, head_dim]`.
 - **`decoder_step`:** see `kv-cache` below.
 
+### `object-detection`
+One image in, a list of `Detection(box, score, label, class_id)` out. Boxes are `x1, y1, x2, y2` in original-image pixels.
+
+- **Graph:** `model`: `images` float32 `[1, 3, H, W]` (RGB, [0, 1]) → `output0`. `H` and `W` are dynamic.
+- **Components:**
+  - `preprocess` must also be able to map boxes back to the original image (`letterbox` does);
+  - `head` turns `output0` into boxes, scores and class ids, and lists the class `labels`.
+
 ## Components
 
 ### `preprocess: line-chunker`
@@ -94,6 +102,30 @@ The position of `tokens[:, i]` is `P + i`, and causal masking is handled inside 
 3. Stop at `<eos>` or after `max_len` steps.
 
 `n > 1` is allowed, which lets blockwise/speculative verification reuse the same graph.
+
+### `preprocess: letterbox`
+Options: `imgsz`, `stride`, `auto`, `pad_value`, `scaleup`. This follows Ultralytics' predict-time letterbox.
+
+1. Scale by `r = min(imgsz / h, imgsz / w)` (capped at 1 when `scaleup` is false).
+2. The new size is `round(w * r)` × `round(h * r)`. Resize with bilinear interpolation, half-pixel centers and no antialiasing (OpenCV `INTER_LINEAR`).
+3. Pad up to `imgsz`, or only up to the next multiple of `stride` when `auto` is true. The padding is split evenly: top/left get `round(pad / 2 - 0.1)`, bottom/right get `round(pad / 2 + 0.1)`. Fill with `pad_value`.
+4. Scale to [0, 1].
+
+To map boxes back: subtract the left/top padding, divide by the per-axis gain (`new_w / w`, `new_h / h`), and clip to the image.
+
+### `head: yolo-nms`
+Options: `labels`, `conf`, `iou`, `max_det` (300), `max_nms` (30000), `agnostic` (false).
+
+`output0` is `[1, 4 + classes, anchors]`: `cx, cy, w, h`, then one score per class.
+1. Each anchor takes its best class. Keep anchors with score > `conf`, at most the top `max_nms` by score.
+2. Convert to `xyxy`.
+3. Run greedy NMS at `iou`. Unless `agnostic`, run it per class: offset each box by `class_id * 7680` first.
+4. Keep the first `max_det`.
+
+### `head: yolo-end2end`
+Options: `labels`, `conf`.
+
+`output0` is `[1, max_det, 6]`: `x1, y1, x2, y2, score, class`, already free of duplicates (NMS-free heads, e.g. YOLOv10). Keep rows with score > `conf`.
 
 ### `tokenizer: vocab`
 Options: `vocab` (a JSON file of `{token: id}`), plus `sos`, `eos`, `pad`, `unk` token names.

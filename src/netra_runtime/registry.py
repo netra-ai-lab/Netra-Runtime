@@ -9,7 +9,7 @@ changes.
 
 _REGISTRY: dict[str, dict[str, type]] = {}
 
-KINDS = ("preprocess", "decoder", "tokenizer", "postprocess", "task")
+KINDS = ("preprocess", "decoder", "head", "tokenizer", "postprocess", "task")
 
 
 def register(kind: str, name: str):

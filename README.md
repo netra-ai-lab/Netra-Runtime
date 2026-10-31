@@ -58,12 +58,23 @@ research repo (torch)  --export script-->  bundle/  --netra_runtime.load()-->  T
 2. Check parity: the runtime's output vs the PyTorch model on a test set, per device.
 3. If the model only needs existing components, you're done. If it needs something new, add one component class and register it. A new kind of output (e.g. detection boxes) needs one new task class.
 
+## Bundles available so far
+
+| Bundle | Task | From |
+|---|---|---|
+| `khmer-text-recognition` | `text-recognition` | Netra-OCR `export_runtime_bundle.py` |
+| `khmer-text-lines` | `object-detection` (`yolo-nms`) | `netra-runtime export-yolo best.pt ...` |
+| `doclayout-docstructbench` | `object-detection` (`yolo-end2end`) | `netra-runtime export-yolo ... --loader doclayout_yolo:YOLOv10` |
+
+Ultralytics-based detectors carry the AGPL-3.0 license into their bundles (recorded in `metadata.license`).
+
 ## CLI
 
 ```bash
 netra-runtime devices                 # usable devices + registered components
 netra-runtime info BUNDLE             # manifest summary, file hash check
 netra-runtime run BUNDLE IMG... --device cuda
+netra-runtime export-yolo WEIGHTS OUT --name NAME [--imgsz 640] [--loader module:Class]
 ```
 
 ## Development

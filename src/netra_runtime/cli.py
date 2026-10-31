@@ -3,6 +3,7 @@
     netra-runtime devices                       devices the installed ONNX Runtime can use
     netra-runtime info BUNDLE                   manifest summary + file integrity check
     netra-runtime run BUNDLE INPUT... [--device D]
+    netra-runtime export-yolo WEIGHTS OUT --name NAME   (needs the export extra + the model's library)
 """
 
 import argparse
@@ -40,10 +41,16 @@ def _run(args):
         start = time.perf_counter()
         result = task(item)
         ms = 1000 * (time.perf_counter() - start)
-        print(json.dumps({"input": item, **vars(result), "ms": round(ms, 1)}, ensure_ascii=False))
+        output = [vars(r) for r in result] if isinstance(result, list) else vars(result)
+        print(json.dumps({"input": item, "output": output, "ms": round(ms, 1)}, ensure_ascii=False))
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["export-yolo"]:
+        from .export.yolo import main as export_yolo
+        return export_yolo(argv[1:])
+
     parser = argparse.ArgumentParser(prog="netra-runtime", description="Run Netra model bundles.")
     sub = parser.add_subparsers(dest="command", required=True)
 

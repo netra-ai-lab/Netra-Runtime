@@ -96,3 +96,46 @@ def test_real_bundle_runs():
     recognizer = netra_runtime.load(os.environ["NETRA_TEST_BUNDLE"], device="cpu")
     result = recognizer(Image.new("L", (300, 48), color=255))
     assert isinstance(result.text, str) and 0.0 <= result.confidence <= 1.0
+
+
+def test_letterbox_and_restore_round_trip():
+    from netra_runtime.components.detection import Letterbox
+    lb = Letterbox(imgsz=640, stride=32, auto=True)
+    tensor, info = lb(np.zeros((300, 1000, 3), np.uint8))
+    # long side -> 640, short side 192 already a multiple of 32: no padding needed
+    assert tensor.shape == (1, 3, 192, 640)
+    tensor, info = lb(np.zeros((310, 1000, 3), np.uint8))   # 198 -> padded to 224
+    assert tensor.shape == (1, 3, 224, 640) and info.pad_y == 13
+    assert tensor[0, 0, 0, 0] == np.float32(114 / 255)
+    box = np.array([[100.0, 50.0, 400.0, 300.0]])
+    letterboxed = box * [info.gain_x, info.gain_y, info.gain_x, info.gain_y] + [info.pad_x, info.pad_y] * 2
+    np.testing.assert_allclose(lb.restore(letterboxed, info), box, atol=1e-3)
+
+
+def test_numpy_resize_matches_opencv():
+    cv2 = pytest.importorskip("cv2")
+    from netra_runtime.components import detection
+    image = np.random.default_rng(0).integers(0, 256, (97, 203, 3), dtype=np.uint8)
+    reference = cv2.resize(image, (150, 61), interpolation=cv2.INTER_LINEAR)
+    saved, detection.cv2 = detection.cv2, None
+    try:
+        ours = detection.resize_bilinear(image, 150, 61)
+    finally:
+        detection.cv2 = saved
+    assert np.abs(ours.astype(int) - reference).max() <= 1
+
+
+def test_nms_heads():
+    from netra_runtime.components.detection import YoloEnd2EndHead, YoloNMSHead, nms
+    boxes = np.array([[0, 0, 10, 10], [1, 1, 10, 10], [20, 20, 30, 30]], np.float32)
+    assert list(nms(boxes, np.array([0.9, 0.8, 0.7]), iou=0.5)) == [0, 2]
+    # raw head: (1, 4 + 2 classes, 3 anchors) in cx, cy, w, h; anchors 0 and 1 overlap but differ in class
+    raw = np.array([[[5, 5.5, 25], [5, 5.5, 25], [10, 9, 10], [10, 9, 10],
+                     [0.9, 0.1, 0.1], [0.1, 0.8, 0.6]]], np.float32)
+    b, s, c = YoloNMSHead(labels=["a", "b"], conf=0.25, iou=0.5)(raw)
+    assert list(c) == [0, 1, 1] and len(b) == 3            # class-aware: no suppression across classes
+    b, s, c = YoloNMSHead(labels=["a", "b"], conf=0.25, iou=0.5, agnostic=True)(raw)
+    assert len(b) == 2
+    e2e = np.array([[[0, 0, 5, 5, 0.9, 1], [0, 0, 5, 5, 0.1, 0]]], np.float32)
+    b, s, c = YoloEnd2EndHead(labels=["a", "b"], conf=0.25)(e2e)
+    assert list(c) == [1]

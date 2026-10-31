@@ -69,18 +69,21 @@ def resolve_device(device: str | None) -> str:
 
 def providers_for(device: str, cache_dir: Path | None = None) -> list:
     kind, index = _split_device(device)
+    # Input shapes vary per call (image sizes, sequence lengths); the default
+    # exhaustive cuDNN search re-benchmarks every new shape, which costs more
+    # than it saves.
+    cuda = ("CUDAExecutionProvider", {"device_id": index, "cudnn_conv_algo_search": "HEURISTIC"})
     if kind == "cpu":
         return ["CPUExecutionProvider"]
     if kind == "cuda":
-        return [("CUDAExecutionProvider", {"device_id": index}), "CPUExecutionProvider"]
+        return [cuda, "CPUExecutionProvider"]
     if kind == "tensorrt":
         trt = {"device_id": index, "trt_fp16_enable": True}
         if cache_dir is not None:
             # Building a TensorRT engine takes minutes; cache it next to the bundle.
             trt.update(trt_engine_cache_enable=True, trt_engine_cache_path=str(cache_dir),
                        trt_timing_cache_enable=True, trt_timing_cache_path=str(cache_dir))
-        return [("TensorrtExecutionProvider", trt),
-                ("CUDAExecutionProvider", {"device_id": index}), "CPUExecutionProvider"]
+        return [("TensorrtExecutionProvider", trt), cuda, "CPUExecutionProvider"]
     if kind == "openvino":
         return [("OpenVINOExecutionProvider", {"device_type": "CPU"}), "CPUExecutionProvider"]
     raise ValueError(f"Unknown device '{device}'")
