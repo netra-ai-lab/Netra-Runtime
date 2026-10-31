@@ -35,6 +35,8 @@ If a GPU provider can't load, the runtime logs a warning and runs on CPU. It nev
 | `cpu` | ONNX Runtime CPU |
 | `cuda`, `cuda:1` | CUDA |
 | `tensorrt` | TensorRT, falling back to CUDA, then CPU, per op. The engine is cached in `<bundle>/.trt_cache/` after the first (slow) build. |
+
+On GPUs, detectors pad every image to the full `imgsz` square. ONNX Runtime's CUDA convolutions redo their setup every time the input shape changes, which made varying page shapes about 6× slower. CPUs keep Ultralytics' tighter rectangle. Square padding can change borderline detections slightly: 5 of 272 line boxes on the test pages.
 | `openvino` | Intel OpenVINO |
 
 The same bundle runs in the browser with `onnxruntime-web`. Graphs only use basic opset-18 ops, so the format stays portable. See [spec/bundle.md](spec/bundle.md).
@@ -57,6 +59,25 @@ research repo (torch)  --export script-->  bundle/  --netra_runtime.load()-->  T
 1. Write an exporter in the model's research repo. It builds the graphs and calls `netra_runtime.bundle.write_manifest()`. Example: Netra-OCR's `netra_ocr/recognition/scripts/export_runtime_bundle.py`.
 2. Check parity: the runtime's output vs the PyTorch model on a test set, per device.
 3. If the model only needs existing components, you're done. If it needs something new, add one component class and register it. A new kind of output (e.g. detection boxes) needs one new task class.
+
+## Precision variants
+
+```bash
+netra-runtime make-variant BUNDLE fp16 [--prefer-on cuda]   # half precision, float32 inputs/outputs kept
+netra-runtime make-variant BUNDLE int8 [--prefer-on cpu]    # dynamic int8 on MatMul/Gemm
+netra-runtime make-variant BUNDLE int8 --remove
+```
+
+A variant can always be selected with `load(..., variant="fp16")`. It only becomes a device's default after `--prefer-on`, and you should only do that after measuring accuracy and speed. Results on Netra-OCR's models (RTX 3060 / i7-13700KF):
+
+| Bundle | Variant | Result | Decision |
+|---|---|---|---|
+| `doclayout-docstructbench` | fp16, GPU | 65 → 39 ms/page, 115/115 boxes matched | **default on cuda** |
+| `khmer-text-lines` | fp16, GPU | 8.6 → 6.4 ms/page, 269/269 boxes matched | **default on cuda** |
+| `khmer-text-recognition` | fp16, GPU | identical text, but 13.1 → 16.5 ms/line | not used |
+| `khmer-text-recognition` | int8, CPU | CER 1.17% → 1.26%, no speed gain | not used |
+
+Small, latency-bound models (the recognizer's LSTM and per-token steps) don't gain from lower precision. Convolution-heavy detectors on a GPU do.
 
 ## Bundles available so far
 

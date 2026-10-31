@@ -4,6 +4,7 @@
     netra-runtime info BUNDLE                   manifest summary + file integrity check
     netra-runtime run BUNDLE INPUT... [--device D]
     netra-runtime export-yolo WEIGHTS OUT --name NAME   (needs the export extra + the model's library)
+    netra-runtime make-variant BUNDLE fp16|int8 [--prefer-on DEVICE...]
 """
 
 import argparse
@@ -50,6 +51,9 @@ def main(argv=None):
     if argv[:1] == ["export-yolo"]:
         from .export.yolo import main as export_yolo
         return export_yolo(argv[1:])
+    if argv[:1] == ["make-variant"]:
+        from .export.variants import main as make_variant
+        return make_variant(argv[1:])
 
     parser = argparse.ArgumentParser(prog="netra-runtime", description="Run Netra model bundles.")
     sub = parser.add_subparsers(dest="command", required=True)

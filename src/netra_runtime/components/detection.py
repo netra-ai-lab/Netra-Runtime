@@ -56,13 +56,18 @@ class Letterbox:
     """Resize keeping the aspect ratio so the long side is ``imgsz``, then pad
     with ``pad_value`` -- to a multiple of ``stride`` (``auto``, the minimum
     rectangle) or to ``imgsz`` x ``imgsz``. Output: ``(1, 3, H, W)`` float32 RGB in [0, 1].
+
+    On GPUs the input is always padded to the full square: ONNX Runtime's CUDA
+    convolutions redo their setup whenever the input shape differs from the
+    previous call (measured ~60 ms vs ~6 ms per image for the YOLO26s line
+    detector), so one fixed shape is much faster than the tighter rectangle.
     """
 
     def __init__(self, imgsz: int, stride: int = 32, auto: bool = True, pad_value: int = 114,
-                 scaleup: bool = True, **context):
+                 scaleup: bool = True, device: str = "cpu", **context):
         self.imgsz = imgsz
         self.stride = stride
-        self.auto = auto
+        self.auto = auto and device.split(":")[0] not in ("cuda", "tensorrt")
         self.pad_value = pad_value
         self.scaleup = scaleup
 

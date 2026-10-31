@@ -24,7 +24,7 @@ class ObjectDetector(Task):
     def __init__(self, bundle, **kwargs):
         super().__init__(bundle, **kwargs)
         spec = bundle.components
-        self.preprocess = registry.build("preprocess", spec["preprocess"], bundle=bundle)
+        self.preprocess = registry.build("preprocess", spec["preprocess"], bundle=bundle, device=self.device)
         self.head = registry.build("head", spec["head"], bundle=bundle)
         self.labels = self.head.labels
         self.model = self.sessions["model"]

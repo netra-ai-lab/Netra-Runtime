@@ -139,3 +139,38 @@ def test_nms_heads():
     e2e = np.array([[[0, 0, 5, 5, 0.9, 1], [0, 0, 5, 5, 0.1, 0]]], np.float32)
     b, s, c = YoloEnd2EndHead(labels=["a", "b"], conf=0.25)(e2e)
     assert list(c) == [1]
+
+
+def test_make_and_remove_variants(tmp_path):
+    onnx = pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    from onnx import TensorProto, helper, numpy_helper
+    from netra_runtime.export.variants import make_variant, remove_variant
+
+    weight = numpy_helper.from_array(np.random.default_rng(0).standard_normal((8, 4)).astype(np.float32), "w")
+    graph = helper.make_graph(
+        [helper.make_node("MatMul", ["x", "w"], ["y"])], "toy",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, ["n", 8])],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, ["n", 4])], [weight])
+    root = tmp_path / "b"
+    root.mkdir()
+    onnx.save(helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)], ir_version=9),
+              str(root / "model.onnx"))
+    write_manifest(root, {"name": "toy", "version": "0", "task": "object-detection",
+                          "graphs": {"model": "model.onnx"}, "components": {}})
+
+    make_variant(root, "fp16", prefer_on=["cuda"])
+    make_variant(root, "int8")
+    bundle = load_bundle(root)
+    assert bundle.pick_variant("cuda") == "fp16" and bundle.pick_variant("cpu") is None
+    assert bundle.verify() == []
+
+    from netra_runtime.backends import Session
+    x = np.random.default_rng(1).standard_normal((3, 8)).astype(np.float32)
+    want = Session(root / "model.onnx", "cpu").run({"x": x})["y"]
+    for variant in ("fp16", "int8"):
+        got = Session(bundle.graph_paths(variant)["model"], "cpu").run({"x": x})["y"]
+        assert got.dtype == np.float32 and np.allclose(got, want, atol=0.1)   # io types stay float32
+
+    remove_variant(root, "int8")
+    assert "int8" not in load_bundle(root).variants and not (root / "model.int8.onnx").exists()
