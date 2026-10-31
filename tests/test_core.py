@@ -261,3 +261,15 @@ def test_resolve_downloads_only_the_device_variant(monkeypatch, tmp_path):
     assert calls[0] == ["lines/netra-model.json"]
     assert sorted(calls[1]) == ["lines/encoder.onnx", "lines/netra-model.json", "lines/vocab.json"]
     assert sorted(calls[3]) == ["lines/encoder.fp16.onnx", "lines/netra-model.json", "lines/vocab.json"]
+
+
+def test_bundle_with_only_one_variant_downloaded(tmp_path):
+    # resolve(device="cuda") fetches the fp16 graphs and not the fp32 ones.
+    folder = make_bundle(tmp_path / "b", variants={"fp16": {"graphs": {"encoder": "encoder.fp16.onnx"},
+                                                              "devices": ["cuda"]}})
+    (folder / "encoder.fp16.onnx").write_bytes(b"half")
+    (folder / "encoder.onnx").unlink()
+    bundle = load_bundle(folder)
+    assert bundle.graph_paths("fp16")["encoder"].name == "encoder.fp16.onnx"
+    with pytest.raises(BundleError, match="Graph file missing"):
+        bundle.graph_paths()

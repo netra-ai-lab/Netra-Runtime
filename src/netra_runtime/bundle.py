@@ -44,7 +44,13 @@ class Bundle:
             if variant not in self.variants:
                 raise BundleError(f"Bundle has no variant '{variant}'. Available: {sorted(self.variants)}")
             graphs.update(self.variants[variant].get("graphs", {}))
-        return {role: self.path(file) for role, file in graphs.items()}
+        paths = {role: self.path(file) for role, file in graphs.items()}
+        # Checked here, not at load: a bundle fetched for one device may hold
+        # only that device's variant (see netra_runtime.resolve).
+        for path in paths.values():
+            if not path.exists():
+                raise BundleError(f"Graph file missing: {path}")
+        return paths
 
     def pick_variant(self, device: str) -> str | None:
         """The first variant the manifest marks as preferred for ``device``, else None."""
@@ -94,9 +100,6 @@ def load_bundle(root: str | Path) -> Bundle:
         metadata=manifest.get("metadata", {}),
         files=manifest.get("files", {}),
     )
-    for path in bundle.graph_paths().values():
-        if not path.exists():
-            raise BundleError(f"Graph file missing: {path}")
     return bundle
 
 

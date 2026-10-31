@@ -12,7 +12,7 @@ from . import components, registry, tasks  # noqa: F401  (registers built-in com
 from .backends import available_devices, resolve_device
 from .bundle import MANIFEST_NAME, Bundle, BundleError, load_bundle, pick_variant
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 def resolve(source: str | Path, device: str | None = None, variant: str | None = None) -> Path:
