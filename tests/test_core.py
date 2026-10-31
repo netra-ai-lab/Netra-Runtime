@@ -112,17 +112,13 @@ def test_letterbox_and_restore_round_trip():
     np.testing.assert_allclose(lb.restore(letterboxed, info), box, atol=1e-3)
 
 
-def test_numpy_resize_matches_opencv():
+def test_resize_close_to_opencv():
     cv2 = pytest.importorskip("cv2")
-    from netra_runtime.components import detection
+    from netra_runtime.components.detection import resize_bilinear
     image = np.random.default_rng(0).integers(0, 256, (97, 203, 3), dtype=np.uint8)
-    reference = cv2.resize(image, (150, 61), interpolation=cv2.INTER_LINEAR)
-    saved, detection.cv2 = detection.cv2, None
-    try:
-        ours = detection.resize_bilinear(image, 150, 61)
-    finally:
-        detection.cv2 = saved
-    assert np.abs(ours.astype(int) - reference).max() <= 1
+    for size in [(150, 61), (640, 300), (203, 97)]:
+        reference = cv2.resize(image, size, interpolation=cv2.INTER_LINEAR)
+        assert np.abs(resize_bilinear(image, *size).astype(int) - reference).max() <= 1
 
 
 def test_nms_heads():

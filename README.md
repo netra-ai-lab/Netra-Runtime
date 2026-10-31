@@ -39,7 +39,7 @@ If a GPU provider can't load, the runtime logs a warning and runs on CPU. It nev
 On GPUs, detectors pad every image to the full `imgsz` square. ONNX Runtime's CUDA convolutions redo their setup every time the input shape changes, which made varying page shapes about 6× slower. CPUs keep Ultralytics' tighter rectangle. Square padding can change borderline detections slightly: 5 of 272 line boxes on the test pages.
 | `openvino` | Intel OpenVINO |
 
-The same bundle runs in the browser with `onnxruntime-web`. Graphs only use basic opset-18 ops, so the format stays portable. See [spec/bundle.md](spec/bundle.md).
+The same bundles run in the browser through [`web/`](web/README.md) (`@netra-ai-lab/runtime-web`) on WebGPU or WebAssembly. Its outputs are checked against this package: identical recognized text, and identical boxes with the same padding. Graphs only use basic opset-18 ops so they stay portable; see [spec/bundle.md](spec/bundle.md).
 
 ## How it fits together
 

@@ -8,11 +8,6 @@ import numpy as np
 from ..registry import register
 from .preprocess import to_pil
 
-try:
-    import cv2
-except ImportError:  # optional: a pure-numpy resize is used instead
-    cv2 = None
-
 
 def to_rgb_array(image) -> np.ndarray:
     """Path / PIL image / uint8 array (H x W gray or H x W x 3 RGB) -> H x W x 3 uint8 RGB."""
@@ -22,23 +17,28 @@ def to_rgb_array(image) -> np.ndarray:
 
 
 def resize_bilinear(image: np.ndarray, width: int, height: int) -> np.ndarray:
-    """Bilinear resize with half-pixel centers and no antialiasing (OpenCV INTER_LINEAR semantics)."""
-    if cv2 is not None:
-        return cv2.resize(image, (width, height), interpolation=cv2.INTER_LINEAR)
+    """Bilinear resize with half-pixel centers, no antialiasing, float64 math, round half up.
+
+    Defined here rather than delegated to OpenCV: cv2's fixed-point
+    INTER_LINEAR differs between its SIMD and scalar paths and across
+    versions, while this exact arithmetic is reproduced by the browser
+    runtime, so Python and JavaScript see identical pixels.
+    """
     src_h, src_w = image.shape[:2]
 
     def axis(dst, src):
         pos = np.clip((np.arange(dst) + 0.5) * (src / dst) - 0.5, 0, src - 1)
         lo = np.floor(pos).astype(np.int64)
-        return lo, np.minimum(lo + 1, src - 1), (pos - lo).astype(np.float32)
+        return lo, np.minimum(lo + 1, src - 1), pos - lo
 
     y0, y1, wy = axis(height, src_h)
     x0, x1, wx = axis(width, src_w)
-    img = image.astype(np.float32)
-    top = img[y0][:, x0] * (1 - wx)[None, :, None] + img[y0][:, x1] * wx[None, :, None]
-    bottom = img[y1][:, x0] * (1 - wx)[None, :, None] + img[y1][:, x1] * wx[None, :, None]
-    out = top * (1 - wy)[:, None, None] + bottom * wy[:, None, None]
-    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
+    # Gather the needed rows/columns as uint8 first; only output-sized arrays become float64.
+    rows0, rows1 = image[y0], image[y1]
+    wx, wy = wx[None, :, None], wy[:, None, None]
+    top = rows0[:, x0].astype(np.float64) * (1 - wx) + rows0[:, x1].astype(np.float64) * wx
+    bottom = rows1[:, x0].astype(np.float64) * (1 - wx) + rows1[:, x1].astype(np.float64) * wx
+    return np.floor(top * (1 - wy) + bottom * wy + 0.5).astype(np.uint8)
 
 
 @dataclass

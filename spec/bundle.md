@@ -114,9 +114,18 @@ The result is the same as decoding each line alone.
 Options: `imgsz`, `stride`, `auto`, `pad_value`, `scaleup`. This follows Ultralytics' predict-time letterbox.
 
 1. Scale by `r = min(imgsz / h, imgsz / w)` (capped at 1 when `scaleup` is false).
-2. The new size is `round(w * r)` × `round(h * r)`. Resize with bilinear interpolation, half-pixel centers and no antialiasing (OpenCV `INTER_LINEAR`).
-3. Pad up to `imgsz`, or only up to the next multiple of `stride` when `auto` is true. The padding is split evenly: top/left get `round(pad / 2 - 0.1)`, bottom/right get `round(pad / 2 + 0.1)`. Fill with `pad_value`.
-4. Scale to [0, 1].
+2. The new size is `round(w * r)` × `round(h * r)`, where `round` sends halves to even.
+3. Resize RGB with bilinear interpolation:
+   - half-pixel centers: `src = (dst + 0.5) * src_size / dst_size - 0.5`, clamped to the image;
+   - no antialiasing;
+   - float64 arithmetic: interpolate each row (horizontally) first, then between the two rows (vertically);
+   - `floor(v + 0.5)` to get back to uint8.
+
+   This arithmetic is part of the spec, so every runtime sees identical pixels. It's within ±1 of OpenCV `INTER_LINEAR`, whose fixed-point results vary between OpenCV versions and code paths.
+4. Pad up to `imgsz`, or only up to the next multiple of `stride` when `auto` is true. The padding is split evenly: top/left get `round(pad / 2 - 0.1)`, bottom/right get `round(pad / 2 + 0.1)`. Fill with `pad_value`.
+5. Scale to [0, 1].
+
+Runtimes may ignore `auto` on GPU devices and always pad to `imgsz`: fixed shapes are much faster there. Square padding can change borderline detections slightly.
 
 To map boxes back: subtract the left/top padding, divide by the per-axis gain (`new_w / w`, `new_h / h`), and clip to the image.
 
