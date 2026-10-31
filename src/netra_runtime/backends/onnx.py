@@ -124,6 +124,12 @@ class Session:
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         if threads:
             options.intra_op_num_threads = threads
+        # Idle worker threads busy-wait by default; with several sessions in
+        # one process (detector + layout + recognizer) they steal CPU from
+        # whichever session is actually running.
+        if os.environ.get("NETRA_ORT_SPIN", "0") != "1":
+            options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            options.add_session_config_entry("session.inter_op.allow_spinning", "0")
         options.log_severity_level = 3
 
         path = Path(path)

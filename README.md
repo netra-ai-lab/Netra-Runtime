@@ -60,6 +60,10 @@ research repo (torch)  --export script-->  bundle/  --netra_runtime.load()-->  T
 2. Check parity: the runtime's output vs the PyTorch model on a test set, per device.
 3. If the model only needs existing components, you're done. If it needs something new, add one component class and register it. A new kind of output (e.g. detection boxes) needs one new task class.
 
+## Threads
+
+ONNX Runtime's idle worker threads busy-wait ("spin") by default. When several sessions share a process, such as a detector, a layout model and a recognizer, the spinning threads of one session steal CPU from whichever session is running. In Netra-OCR's CPU pipeline this made the detectors 2–3× slower than in isolation. Sessions therefore start with spinning off. Set `NETRA_ORT_SPIN=1` to turn it back on for a process that runs a single model; batched recognition alone is about 15% faster with it.
+
 ## Precision variants
 
 ```bash
