@@ -1,5 +1,13 @@
 # Netra Runtime
 
+> **Archived (2026-10-31).** This package is no longer developed. Pre- and
+> post-processing turned out to be specific to each model, so Netra OCR now
+> runs its models on plain ONNX Runtime with its own code:
+> [`netra_ocr/inference/`](https://github.com/netra-ai-lab/Netra-OCR/tree/master/netra_ocr/inference)
+> (Python) and [`web/`](https://github.com/netra-ai-lab/Netra-OCR/tree/master/web) (browser).
+> The model files on [Netra-Lab/Netra-OCR](https://huggingface.co/Netra-Lab/Netra-OCR)
+> are unchanged.
+
 The shared inference runtime for Netra Lab projects (Netra-OCR, Netra-Lens,
 ...). Research code stays in PyTorch. Each model is exported once into a
 **bundle**, and every app loads bundles through one small API that runs on
